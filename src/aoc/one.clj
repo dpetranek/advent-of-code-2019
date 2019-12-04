@@ -6,12 +6,12 @@
 
 (defn calc-fuel2
   ([mass]
-   (let [required (- (Math/floor (/ mass 3)) 2)]
+   (let [required (- (quot mass 3) 2)]
      (if (<= required 0)
        required
        (calc-fuel2 required required))))
   ([fuel total]
-   (let [required (- (Math/floor (/ fuel 3)) 2)]
+   (let [required (- (quot fuel 3) 2)]
      (if (<= required 0)
        total
        (recur required (+ total required))))))
