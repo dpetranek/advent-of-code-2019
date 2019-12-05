@@ -8,9 +8,11 @@
   (def processed (map #(str/split % #",") (str/split-lines raw)))
   (def l1 (first processed))
   (def l2 (second processed))
+
+  l1
   )
 
-(defn interpret [[x y] instruction]
+(defn find-next-point [[x y] instruction]
   (let [dir (first instruction)
         magnitude (Integer/parseInt (subs instruction 1))]
     (condp = dir
@@ -19,185 +21,137 @@
       \U [x (+ y magnitude)]
       \D [x (- y magnitude)])))
 
-(comment
-  (interpret [0 0] "U3")
-  [0 3]
-  )
-
 (defn instructions->coords [instructions]
   (reduce (fn [coords instruction]
-            (conj coords (interpret (last coords) instruction)))
+            (conj coords (find-next-point (last coords) instruction)))
           [[0 0]] instructions))
 
-(comment
-  (reduce (fn [coords instruction]
-            (conj coords (interpret (last coords) instruction)))
-          [[0 0]]
-          l1)
-
-  (map instructions->coords processed)
-
-  )
+(defn orientation [segment]
+  (let [[[x1 y1] [x2 y2]] segment]
+     (if (= x1 x2) :vertical :horizontal)))
 
 (defn intersection? [segment1 segment2]
   (->> (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)]) segment1 segment2)
        (apply map not=)
        (= [true true])))
 
-(comment
-  ;; intersect
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[0 2] [2 2]]
-        [[1 0] [1 2]])
-  [[true false] [false true]]
+(defn segment->points [segment]
+  (let [[[x1 y1] [x2 y2]] segment]
+    (case (orientation segment)
+      :horizontal
+      (set (map #(vector % y1) (apply range (if (< x1 x2)
+                                              [x1 (inc x2)]
+                                              [x2 (inc x1)]))))
+      :vertical
+      (set (map #(vector x1 %) (apply range (if (< y1 y2)
+                                              [y1 (inc y2)]
+                                              [y2 (inc y1)])))))))
 
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[1 0] [1 2]]
-        [[0 1] [2 1]])
-  [[false true] [true false]]
+(defn find-intersection
+  [segment1 segment2]
+  (let [v-points (segment->points segment1)
+        h-points (segment->points segment2)]
+    (set/intersection v-points h-points)))
 
-  ;; no intersect
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[0 2] [2 2]]
-        [[1 0] [3 0]])
-  [[true false] [true false]]
+(defn find-intersections
+  [line1 line2]
+  (let [[{horizontal1 :horizontal vertical1 :vertical}
+         {horizontal2 :horizontal vertical2 :vertical}]
+        (->> [line1 line2]
+             (map instructions->coords)
+             (map (partial partition 2 1))
+             (map (partial group-by orientation))
+             (map (partial into {} (map (juxt key (comp set val))))))]
+    (loop [[h1-seg & h1-segs] horizontal1
+           [h2-seg & h2-segs] horizontal2
+           all-intersections #{}]
+      (if (and h1-seg h2-seg)
+        (let [h1v2 (reduce (fn [intersections v-seg]
+                             (if (intersection? v-seg h1-seg)
+                               (set/union intersections (find-intersection v-seg h1-seg))
+                               intersections))
+                           #{}
+                           vertical2)
+              h2v1 (reduce (fn [intersections v-seg]
+                             (if (intersection? v-seg h2-seg)
+                               (set/union intersections (find-intersection v-seg h2-seg))
+                               intersections))
+                           #{}
+                           vertical1)]
+          (recur h1-segs h2-segs (set/union all-intersections h1v2 h2v1)))
+        all-intersections))))
 
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[1 0] [1 2]]
-        [[2 1] [2 2]])
-  [[true true] [true true]]
-
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[3 0] [3 2]]
-        [[2 1] [2 2]])
-  [[false true] [false true]]
-
-  (mapv (fn [[x1 y1] [x2 y2]] [(<= x1 x2) (<= y1 y2)])
-        [[3 3] [3 1]]
-        [[2 1] [2 2]])
-  [[false false] [false true]]
-
-  ;; intersection if xs are not equal and ys are not equal
-  (apply map not= [[false false] [false true]])
-  (false true)
-  (= [true true] (apply map not= [[false false] [false true]]))
-  false
-  )
-
-
-
-(defn segmentu->points [[[x1 y1] [x2 y2]]]
-  (cond (= x1 x2) (let [ys (if (< y1 y2)
-                             (take-while #(not= % (inc y2)) (iterate inc y1))
-                             (take-while #(not= % (dec y2)) (iterate dec y1)))]
-                    (map #(vector x1 %) ys))
-        (= y1 y2) (let [xs (if (< x1 x2)
-                             (take-while #(not= % (inc x2)) (iterate inc x1))
-                             (take-while #(not= % (dec x2)) (iterate dec x1)))]
-                    (map #(vector % y1) xs))
-        :else     (throw (Exception. (str "Segment has invalid slope: " [[x1 y1] [x2 y2]])))))
+(defn manhatten-distance [[x y]]
+  (+ (Math/abs x) (Math/abs y)))
 
 (comment
-  (segment->points [[0 2] [2 2]])
-  ([0 2] [1 2] [2 2])
-  (segment->points [[0 -2] [-2 -2]])
-  ([0 -2] [-1 -2] [-2 -2])
-  '(0 -1 -2)
-  '()
-  (range 0 (inc -2))
-  ()
-  (range 0 -2)
-  ()
+  (def xl10 ["U1" "R2"])
+  (def xl20 ["R1" "U2"])
+  (def xl1 [[[0 0] [1 0]] [[1 0] [1 3]]])
+  (def xl2 [[[0 0] [0 1]] [[0 1] [3 1]]])
 
-  (take-while #(not= % 1) (iterate dec 3))
-  '(3 2)
+  (orientation [[0 2] [2 2]])
+  :horizontal
+  (orientation [[2 0] [2 2]])
+  :vertical
 
-  (let [x1 -5
-        x2 5]
-    (take-while #(not= % x2) (iterate (if (< x1 x2) inc dec) x1)))
-  (-5 -4 -3 -2 -1 0 1 2 3 4)
-  (let [x1 5
-        x2 -5]
-    (take-while #(not= % x2) (iterate (if (< x1 x2) inc dec) x1)))
-  (5 4 3 2 1 0 -1 -2 -3 -4)
-  )
+  (set (mapcat segment->points xl1))
+  #{[0 0] [1 0] [1 1] [1 3] [1 2]}
+  (set (mapcat segment->points xl2))
+  #{[0 0] [1 1] [3 1] [2 1] [0 1]}
+  (set/intersection (set (mapcat segment->points xl1))
+                    (set (mapcat segment->points xl2)))
+  #{[0 0] [1 1]}
 
-(defn find-intersection [segment1 segment2]
-  (when (not= segment1 segment2)
-    (let [points1 (segment->points segment1)
-          points2 (segment->points segment2)]
-      (not-empty (set/intersection (set points1) (set points2))))))
+  (let [{:keys [horizontal vertical] :as segments} (->> (instructions->coords xl10)
+                                                        (partition 2 1)
+                                                        (group-by orientation))]
+    segments)
+  {:vertical [([0 0] [0 1])], :horizontal [([0 1] [2 1])]}
+  {:horizontal [([0 0] [0 1])], :vertical [([0 1] [2 1])]}
+
+  (into {} (map (juxt key val)) {:a 1})
 
 
-(comment
-  (let [[[x1 y1] [x2 y2]] [[0 0] [1 5]]]
-    (cond (= x1 x2) (fn [] )
-          (= y1 y2) :y-stays-same-throughout
-          :else (throw (Exception. (str "Segment has invalid slope: " [[x1 y1] [x2 y2]])))))
 
-  (find-intersection [[0 2] [2 2]] [[1 0] [1 2]])
-  #{[1 2]}
-  [#{[2 2] [0 2] [1 2]} #{[1 0] [1 1] [1 2]}]
-  [([0 2] [1 2] [2 2]) ([1 0] [1 1] [1 2])]
-  [(0 1 2) (0 1 2)]
-  [#{0 1 2} #{0 1 2}]
-  [#{0 1 2} #{0 1 2}]
-  [#{[0 2]} #{[1 0] [1 1] [1 2]}]
+  (into {} (map (juxt key (comp set val))) {:vertical [[[0 0] [1 0]]], :horizontal [[[1 0] [1 3]]]})
+  {:vertical #{[[0 0] [1 0]]}, :horizontal #{[[1 0] [1 3]]}}
+  {:vertical #{:vertical [[[0 0] [1 0]]]}, :horizontal #{:horizontal [[[1 0] [1 3]]]}}
+
+  (->> [xl10 xl20]
+       (map instructions->coords)
+       (map (partial partition 2 1)))
+  ((([0 0] [0 1]) ([0 1] [2 1])) (([0 0] [1 0]) ([1 0] [1 2])))
+  ([[0 0] [0 1] [2 1]] [[0 0] [1 0] [1 2]])
+
+
+  (let [{:keys [horizontal vertical]} (->> [xl1 xl2]
+                                           (map (partial group-by horizontal?))
+                                           (map (partial into {} (map (juxt key (comp set val)))))
+                                           (reduce (partial merge-with set/union)))]
+    (reduce (fn [all-intersections h-seg]
+              (set/union all-intersections
+                         (reduce (fn [intersections v-seg]
+                                   (if (intersection? v-seg h-seg)
+                                     (let [v-points (segment->points v-seg)
+                                           h-points (segment->points h-seg)]
+                                       (set/union intersections (set/intersection v-points h-points)))
+                                     intersections))
+                                 #{}
+                                 vertical)))
+            #{}
+            horizontal))
+
+  (find-intersections xl10 xl20)
+  #{[1 1]}
+
+  (find-intersections l1 l2)
+  #{[-481 742] [-404 1270] [-943 0] [99 2038] [-199 1373] [-381 1362] [-412 1819] [-199 1819] [-481 592] [-412 1763] [-404 1362] [-435 296] [-450 296] [-1739 2069] [-381 1270] [-481 329] [-943 122] [-1739 1911] [-184 1270] [-364 2619] [-481 526]}
   #{}
 
-  (find-intersection [[3 3] [3 1]] [[2 1] [2 2]])
-  nil
-
-
-
-  )
-
-
-(defn find-intersections [segment segments]
-  (reduce (fn [intersections s]
-            (if-let [cross (find-intersection segment s)]
-              (set/union intersections cross)
-              intersections))
-          #{}
-          segments))
-
-(defn find-all-intersections [segments]
-  (reduce (fn [intersections segment]
-            (set/union intersections (find-intersections segment segments)))
-          #{}
-          segments))
-
-(comment
-  (->> (take 5 l1)
-       (instructions->coords)
-       (partition 2 1)
-       (find-intersections '([0 0] [998 0])))
-
-
-
-  (find-intersection '([0 0] [998 0]) '([0 0] [998 0]))
-
-
-  (([0 0] [998 0]) ([998 0] [998 547]) ([998 547] [295 547]) ([295 547] [295 296]) ([295 296] [-481 296]) ([-481 296]))
-
-  '(([0 0] [998 0]) ([998 0] [998 547]) ([998 547] [295 547]) ([295 547] [295 296]) ([295 296] [-481 296]) ([-481 296]))
-  [[0 0] [998 0] [998 547] [295 547] [295 296] [-481 296]]
-  '("R998" "U547" "L703" "D251" "L776")
-
-
-
-
-  (time (->> (map instructions->coords processed) ; two colls of coords [[x y]...]
-             (mapcat (partial partition 20 1)) ; one col of all segments [[[x1 y1] [x2 y2]]...]
-             (find-all-intersections)
-             (map (fn [[x y]] (+ (Math/abs x) (Math/abs y))))
-             (reduce #(if (< %1 %2) %1 %2))))
-  2
-  "Elapsed time: 357296.147901 msecs"
-
-
-
-
-
-
+  (->> (find-intersections l1 l2)
+       (map manhatten-distance)
+       (sort)
+       (first))
+  731
   )
