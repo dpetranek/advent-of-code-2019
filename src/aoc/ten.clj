@@ -8,8 +8,8 @@
   (let [[x1 y1] origin
         [x2 y2] target]
     (if (= x1 x2)
-      999999999999999999999
-      (/ (- y2 y1) (- x2 x1)))))
+      [:vert (< y1 y2)]
+      [(/ (- y2 y1) (- x2 x1)) (< x1 x2)])))
 
 (defn distance [origin target]
   (let [[x1 y1] origin
@@ -48,29 +48,35 @@
   (mapcat (partial keep (fn [[x y a]] (when (= a \#) [x y]))) coords))
 
 
-(defn count-astroids [field vantage]
+(defn count-asteroids [field vantage]
   (let [[x1 y1] vantage]
     (->> field
+         (remove #{vantage})
          (map (fn [[x2 y2]]
-                   [(slope [x1 y1] [x2 y2])
-                    (distance [x1 y1] [x2 y2])
-                    [x2 y2]]))
+                [(slope [x1 y1] [x2 y2])
+                 (distance [x1 y1] [x2 y2])
+                 [x2 y2]]))
          (group-by first)
-         (vals)
-         (map (partial sort-by second))
-         (map first)
-         (map last)
-         (count))))
+         (keys)
+         (count)
+         #_(vals)
+         #_(map (partial sort-by second))
+         #_(map first)
+         #_(count))))
 
 (defn find-best-vantage [raw]
-  (let [data     (raw->data raw)
-        field    (assign-coordinates data)
-        astroids (filter-asteroids field)]
-    (->> astroids
-         (map #(vector % (count-astroids astroids %)))
+  (let [data      (raw->data raw)
+        field     (assign-coordinates data)
+        asteroids (filter-asteroids field)]
+    (->> asteroids
+         (map #(vector % (count-asteroids asteroids %)))
          (sort-by second)
-         (last)
-         )))
+         (last))))
+
+(defn raw->asteroids [raw]
+  (let [data      (raw->data raw)
+        field     (assign-coordinates data)]
+    (filter-asteroids field)))
 
 
 (comment
@@ -91,24 +97,81 @@
 .##.#..###
 ##...#..#.
 .#....####")
+  (def test3 "#.#...#.#.
+.###....#.
+.#....#...
+##.#.#.#.#
+....#.#.#.
+.##..###.#
+..#...##..
+..##....##
+......#...
+.####.###.")
+  (def test4 ".#..#..###
+####.###.#
+....###.#.
+..###.##.#
+##.##.#.#.
+....###..#
+..#.#..#.#
+#..#.#.###
+.##...##.#
+.....#.#..")
+  (def test5 ".#..##.###...#######
+##.############..##.
+.#.######.########.#
+.###.#######.####.#.
+#####.##.#.##.###.##
+..#####..#.#########
+####################
+#.####....###.#.#.##
+##.#################
+#####.##.###..####..
+..######..##.#######
+####.##.####...##..#
+.#####..#.######.###
+##...#.##########...
+#.##########.#######
+.####.#.###.###.#.##
+....##.##.###..#####
+.#.#.###########.###
+#.#.#.#####.####.###
+###.##.####.##.#..##")
   (def data1 (raw->data test1))
   (def coords1 (assign-coordinates data1))
   (def asteroids1 (mapcat (partial keep (fn [[x y a]] (when (= a \#) [x y]))) coords1))
   coords1
   asteroids1
-
+  (def data2 (raw->data test2))
+  (def coords2 (assign-coordinates data2))
+  (def asteroids2 (mapcat (partial keep (fn [[x y a]] (when (= a \#) [x y]))) coords2))
 
   (let [field (assign-coordinates data1)
-        astroids (filter-asteroids field)]
-    (->> astroids
-         (map #(vector % (count-astroids astroids %)))
+        asteroids (filter-asteroids field)]
+    (->> asteroids
+         (map #(vector % (count-asteroids asteroids %)))
          (sort-by second)
          (last)))
 
   (find-best-vantage test1)
-  [3 4]
+  [[3 4] 8]
+  ;; [[5 8] 33]
   (find-best-vantage test2)
+  [[5 8] 33]
   [[0 1] 32]
+  (raw->asteroids test2)
+  [[0 1] 33]
+  (find-best-vantage test3)
+  [[1 2] 35]
+  (find-best-vantage test4)
+  [[6 3] 41]
+  (find-best-vantage test5)
+  [[11 13] 210]
+  (find-best-vantage raw)
+  [[11 19] 253]
+
+
+  [[1 8] 38]
   [0 1]
 
   data1
